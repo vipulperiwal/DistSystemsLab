@@ -4,6 +4,12 @@ import "fmt"
 import "log"
 import "net/rpc"
 import "hash/fnv"
+import "os"
+import "io/ioutil"
+import "sort"
+import "encoding/json"
+import "strconv"
+
 
 
 //
@@ -12,7 +18,14 @@ import "hash/fnv"
 type KeyValue struct {
 	Key   string
 	Value string
+
 }
+type ByKey []KeyValue
+
+// for sorting by key.
+func (a ByKey) Len() int           { return len(a) }
+func (a ByKey) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a ByKey) Less(i, j int) bool { return a[i].Key < a[j].Key }
 
 //
 // use ihash(key) % NReduce to choose the reduce
@@ -35,7 +48,39 @@ func Worker(mapf func(string, string) []KeyValue,
 
 	// uncomment to send the Example RPC to the coordinator.
 	// CallExample()
+	reply := CallTaskAsk()
 
+	// read the filename
+	filename := reply.Filename
+	file, err := os.Open(filename)
+	if err != nil {
+		log.Fatalf("cannot open %v", filename)
+	}
+	content, err := ioutil.ReadAll(file)
+	if err != nil {
+		log.Fatalf("cannot read %v", filename)
+	}
+	file.Close()
+
+	// run mapf on the content of the file
+	intermediate := mapf(filename, string(content))
+	sort.Sort(ByKey(intermediate))
+
+	// create the intermediate files
+	encoders := make([]*json.Encoder, reply.NReduce)
+	for i := 0; i < reply.NReduce; i++ {
+		encoder_name := "Map-0-" + strconv.Itoa(i)
+		file, err := os.Create(encoder_name)
+		if err != nil {
+			log.Fatal(err)
+		}
+		encoders[i] = json.NewEncoder(file)
+	}
+
+	for i:=0; i < len(intermediate); i++ {
+		hash := ihash(intermediate[i].Key)
+		encoders[hash % reply.NReduce].Encode(&intermediate[i])
+	}
 }
 
 //
@@ -43,6 +88,23 @@ func Worker(mapf func(string, string) []KeyValue,
 //
 // the RPC argument and reply types are defined in rpc.go.
 //
+
+func CallTaskAsk() TaskAskReply{
+	args := TaskAskArgs{}
+
+	reply := TaskAskReply{}
+
+	ok := call("Coordinator.TaskAsk", &args, &reply)
+	if ok {
+		fmt.Printf("reply.fileName %v\n", reply.Filename)
+	} else {
+		fmt.Printf("call failed!\n")
+	}
+
+
+	return reply
+}
+
 func CallExample() {
 
 	// declare an argument structure.

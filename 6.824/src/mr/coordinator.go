@@ -5,10 +5,11 @@ import "net"
 import "os"
 import "net/rpc"
 import "net/http"
-
+import "fmt"
 
 type Coordinator struct {
 	// Your definitions here.
+	NReduce int
 
 }
 
@@ -24,6 +25,12 @@ func (c *Coordinator) Example(args *ExampleArgs, reply *ExampleReply) error {
 	return nil
 }
 
+func (c *Coordinator) TaskAsk(args *TaskAskArgs, reply *TaskAskReply) error {
+	reply.Filename = "pg-being_ernest.txt"
+	reply.TaskType = 0
+	reply.NReduce = c.NReduce
+	return nil
+}
 
 //
 // start a thread that listens for RPCs from worker.go
@@ -60,9 +67,14 @@ func (c *Coordinator) Done() bool {
 // nReduce is the number of reduce tasks to use.
 //
 func MakeCoordinator(files []string, nReduce int) *Coordinator {
-	c := Coordinator{}
+	c := Coordinator{nReduce}
+
+
 
 	// Your code here.
+	for _, filename := range files {
+		fmt.Println(filename)
+	}
 
 
 	c.server()
